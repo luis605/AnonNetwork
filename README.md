@@ -1,26 +1,29 @@
 # AnonNetwork
 A theoretical secure system aiming for high-assurance anonymity and confidentiality.
 
-**"Trust-No-Kernel" Anonymous Text Messaging System** combines a hardened hardware appliance at each endpoint with an enhanced global mix-onion network and an unlinkable messaging protocol. Even a fully compromised host kernel or a sophisticated global adversary should face significant, quantifiable difficulty in recovering plaintext, metadata, or identities.
+A **"Trust-Nothing" Anonymous Text Messaging System**. It integrates secure hardware appliances at each endpoint with an advanced global mix-onion network and a robust unlinkable messaging protocol. This design ensures that even if the host kernel is completely compromised or a highly capable global adversary is involved, retrieving plaintext, metadata, or identities remains extremely challenging and practically impossible. The system is built on the assumption that all components are malicious, yet it still guarantees strong unlinkability and metadata protection.
 
 ## 1. Threat Model & Goals
 
 1.  **Adversaries**
-    * **Host-Kernel Malware**: Full control of the user's OS and kernel (mitigated by appliance I/O and host interface isolation).
+    * **Kernel Level Malware**: Full control of the user's OS and kernel (mitigated by appliance I/O and host interface isolation).
     * **Global Passive/Active Network Observer (GPA)**: Can see, modify, inject, drop packets on any link; actively attempts traffic correlation.
-    * **Malicious Node Operators & Collusion**: Significant fraction of mix/onion nodes may be adversarial and collude. Capable of timing attacks, selective dropping, Sybil attacks.
-    * **Side-Channels**: Power, timing, RF emanations (mitigated by appliance design).
+    * **Malicious Node Operators & Collusion**: All mix/onion nodes are compromised. Capable of timing attacks, selective dropping, Sybil attacks.
+    * **Side-Channels**: Power, timing, RF emanations.
     * **Supply Chain Attacker**: Attempts to tamper with hardware/firmware before delivery (mitigated by design transparency, multi-sourcing, attestation).
     * **Censorship Infrastructure**: Attempts to block access to the network or directory information.
 
 2.  **Security Goals**
     * **End-to-End Confidentiality**: Only sender's and recipient's appliances see plaintext.
-    * **Metadata Protection (Against GPA & Collusion)**: Robustly hide who's talking to whom, when, how much, and in what pattern, resistant to sophisticated correlation.
+    * **Metadata Protection**: Robustly hide who's talking to whom, when, how much, and in what pattern, resistant to sophisticated correlation.
     * **Pseudonymity & Unlinkability**: Messages cannot be tied back to real identities or to each other across contexts.
     * **Kernel-Isolation**: Host OS cannot access cryptographic keys, plaintext, or sensitive metadata.
     * **Censorship & Fingerprinting Resistance**: Employ techniques to bypass DPI and network blocks.
 
-## 2. Endpoint Appliance ("Trust-No-Kernel" Box)
+## 2. Idea
+The system operates under the assumption that all nodes and all servers being compromised, rendering the network as the Global Protective Authority (GPA). The client's actions must be opaque, ensuring that the true signal is indistinguishable from random encrypted noise that fills the network. The appliance must transmit fixed-size encrypted packets over its network interface at a perfectly constant rate, regardless of user activity. Each packet should appear identical to any other, potentially encrypted with unique per-packet keys or a stream cipher. The majority of packets will serve as cover traffic (encrypted noise), with the real message content replacing cover packets only when possible.
+
+## 3. Endpoint Appliance ("Trust-No-Kernel" Box)
 
 1.  **Hardware & Boot**
     * **Immutable Boot ROM** → verifies a signed microkernel (e.g., seL4) on each power-up. Rooted in **Physically Unclonable Function (PUF)** if feasible.
@@ -43,14 +46,6 @@ A theoretical secure system aiming for high-assurance anonymity and confidential
 
 ### A. Node Types & Roles
 
-| Node Type             | Function                                                                                                     | Notes                                                                                                                                                   |
-| :-------------------- | :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Directory Authorities** | Mutually attestable servers running verifiable logs (e.g., Trillian / Certificate Transparency-like) of node lists & metadata. Provide signed snapshots. | Geographically diverse, independent entities. Multiple sources required by client.                                                                     |
-| **Entry Guard Nodes** | Stable, vetted first hops. Clients select a small set and rotate slowly.                                      | High bandwidth, uptime requirements. Subject to stricter monitoring/vetting. Helps resist GPA correlation starting at the client.                            |
-| **Mix-Relay Nodes** | Apply **Poisson or Loopix-style mixing** (adds random delay from exponential distribution), batching, reordering. Padding to fixed cell size. | Stateless where possible. Can implement cryptographic Proof-of-Mixing if needed. May require moderate **stake/bond** to disincentivize misbehavior. |
-| **Onion-Forwarders** | Apply onion decryption (PQ KEM based) and forward cells. Includes per-hop transport anti-replay nonces.          | Lower latency focus than Mix-Relays.                                                                                                                    |
-| **Rendezvous Servers (PIR-enabled)** | Store encrypted message chunks using **Private Information Retrieval (PIR)** schemes. Query requires client computation but hides accessed ID from server. | Sharded, ephemeral storage (e.g., time-based expiry). Constant-rate polling enforced by client appliance.                                               |
-| **Token Authorities (Threshold)** | Distributed entities jointly issuing blind tokens using **Threshold Blind Signatures** (e.g., 3-of-5). Optionally require small Proof-of-Work for requests. | Independent operation crucial. Compromise of < threshold number of authorities does not break the system.                                            |
 
 ### B. Path Construction
 
