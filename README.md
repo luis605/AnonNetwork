@@ -99,7 +99,7 @@ This discovery system is resistant to Sybil, eclipse, and partitioning attacks, 
 | Confidentiality              | 9            | Layered encryption; only endpoints see plaintext.                     |
 | Resistance to GPA            | 8            | Constant-rate, adaptive delays, threshold mixes mitigate timing.      |
 | Resistance to Node Collusion | 9            | Decentralized discovery eliminates bootstrap; strong local filtering. |
-| Operational Complexity       | 4            | High: discovery logic, buffer sync, and p er-hop crypto.               |
+| Operational Complexity       | 4            | High: discovery logic, buffer sync, and per-hop crypto.               |
 
 ## 8. Trade-offs & Limitations
 
