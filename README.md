@@ -1,134 +1,120 @@
 # AnonNetwork
+
 A theoretical secure system aiming for high-assurance anonymity and confidentiality.
 
-A **"Trust-Nothing" Anonymous Text Messaging System**. It integrates secure hardware appliances at each endpoint with an advanced global mix-onion network and a robust unlinkable messaging protocol. This design ensures that even if the host kernel is completely compromised or a highly capable global adversary is involved, retrieving plaintext, metadata, or identities remains extremely challenging and practically impossible. The system is built on the assumption that all components are malicious, yet it still guarantees strong unlinkability and metadata protection.
+This constant-rate, multi-entry mix network is designed to provide strong anonymity and security against traffic analysis, through built-in multi-packet mixing, uniform packet sizes, bidirectional tunnels, and adaptive cover traffic—all without relying on directories or bootstrap nodes.
 
 ## 1. Threat Model & Goals
 
-1.  **Adversaries**
-    * **Kernel Level Malware**: Full control of the user's OS and kernel (mitigated by appliance I/O and host interface isolation).
-    * **Global Passive/Active Network Observer (GPA)**: Can see, modify, inject, drop packets on any link; actively attempts traffic correlation.
-    * **Malicious Node Operators & Collusion**: All mix/onion nodes are compromised. Capable of timing attacks, selective dropping, Sybil attacks.
-    * **Side-Channels**: Power, timing, RF emanations.
-    * **Supply Chain Attacker**: Attempts to tamper with hardware/firmware before delivery (mitigated by design transparency, multi-sourcing, attestation).
-    * **Censorship Infrastructure**: Attempts to block access to the network or directory information.
+1. **Adversaries**
+   * **Kernel-Level Malware**: Full control of the user's OS and kernel (mitigated by appliance I/O isolation and host interface separation).
+   * **Global Passive/Active Observer (GPA)**: Can monitor, modify, inject, or drop packets on any link; attempts sophisticated traffic correlation.
+   * **Malicious Mix Operators & Collusion**: All nodes may be compromised; capable of timing, dropping, Sybil, and replay attacks.
+   * **Side-Channels**: Power, timing, electromagnetic emanations.
+   * **Supply-Chain Attacks**: Hardware/firmware tampering (mitigated via design transparency, multi-sourcing, and attestation).
+   * **Censorship Systems**: Deep packet inspection (DPI) and network blocking.
 
-2.  **Security Goals**
-    * **End-to-End Confidentiality**: Only sender's and recipient's appliances see plaintext.
-    * **Metadata Protection**: Robustly hide who's talking to whom, when, how much, and in what pattern, resistant to sophisticated correlation.
-    * **Pseudonymity & Unlinkability**: Messages cannot be tied back to real identities or to each other across contexts.
-    * **Kernel-Isolation**: Host OS cannot access cryptographic keys, plaintext, or sensitive metadata.
-    * **Censorship & Fingerprinting Resistance**: Employ techniques to bypass DPI and network blocks.
+2. **Security Goals**
+   * **End-to-End Confidentiality**: Only sender’s and receiver’s appliances decrypt plaintext.
+   * **Metadata Protection**: Hide participant identities, message volumes, and timing patterns.
+   * **Pseudonymity & Unlinkability**: Prevent linking multiple messages or sessions to one user.
+   * **Host Isolation**: User OS cannot access cryptographic keys or metadata.
+   * **Censorship Resistance**: Bypass DPI and blocklisting via pluggable transports.
 
-## 2. Idea
-The system operates under the assumption that all nodes and all servers being compromised, rendering the network as the Global Protective Authority (GPA). The client's actions must be opaque, ensuring that the true signal is indistinguishable from random encrypted noise that fills the network. The appliance must transmit fixed-size encrypted packets over its network interface at a perfectly constant rate, regardless of user activity. Each packet should appear identical to any other, potentially encrypted with unique per-packet keys or a stream cipher. The majority of packets will serve as cover traffic (encrypted noise), with the real message content replacing cover packets only when possible.
+## 2. Secure Peer Discovery without Bootstrap
 
-## 3. Endpoint Appliance ("Trust-No-Kernel" Box)
+To eliminate the risk of a compromised bootstrap node, AnonNetwork uses a fully decentralized, multi-layered peer discovery system that ensures no single point of failure. Each node independently discovers the network via a combination of cryptographically verifiable techniques:
 
-1.  **Hardware & Boot**
-    * **Immutable Boot ROM** → verifies a signed microkernel (e.g., seL4) on each power-up. Rooted in **Physically Unclonable Function (PUF)** if feasible.
-    * **Secure Enclave / HSM** → holds long-term keys; enforces “keys never leave.” Selected based on public security evaluations (e.g., FIPS 140-2/3, Common Criteria).
-    * **Component Sourcing:** Utilize common, multi-sourced sub-components (CPU, RAM, Flash) where possible within the custom PCB. **Open Source Hardware Design** for transparency.
-    * **Manufacturing & Auditing:** Partnership with multiple, auditable manufacturers. Implement random batch destructive testing for implant detection.
+1. **Verifiable Random Walks (VRWs)**
+   * Nodes initiate random walks across the known network graph, collecting node descriptors at each hop.
+   * Each walk includes cryptographic proofs to detect tampering or censorship.
 
-2.  **I/O Isolation**
-    * **User I/O** (keyboard, display) plugs directly into the appliance, never the host PC.
-    * **Host Interface** only a USB “network gadget” with end-to-end encrypted and authenticated tunnels (e.g., Noise Protocol); host sees opaque, fixed-size packets.
+2. **Decentralized Hash Sampling**
+   * Nodes derive sampling targets from hash-based computations over time-variant values, ensuring uniform global coverage without centralized seeding.
 
-3.  **Internal Software**
-    * **Minimal Microkernel (seL4)** → isolates services (network, UI driver, crypto agent, messaging agent) in separate, minimal VMs/processes.
+3. **Proof-of-Uptime Directory Fragments**
+   * Network descriptors are gossiped and validated via uptime-signed statements from diverse peers.
+   * The use of threshold cryptography prevents forged inclusion of malicious descriptors.
 
-4.  **Host-Appliance Protocol**
-    * **Encapsulated Frames:** Every frame sent over USB uses a secure channel protocol (e.g., Noise\_IKpsk2\_Ed25519\_AESGCM\_SHA256) authenticated with keys derived during initial pairing/attestation. Payload is the fixed-size Onion-cell (e.g., 512 B).
-    * **No Host Storage**: All message state lives in the appliance's sealed flash/RAM.
+4. **Chaotic Probing & Distributed Hash Crawls**
+   * Each node occasionally probes random IP segments based on distributed hash ranges.
+   * Results are vetted for liveliness, cryptographic validity, and consensus inclusion.
 
-## 3. Anonymous Overlay Network
+5. **History-Based Pruning**
+   * Nodes track descriptor history including reliability, uptime, and correct mixing.
+   * Descriptors with poor reputations are down-weighted and excluded over time.
 
-### A. Node Types & Roles
+This discovery system is resistant to Sybil, eclipse, and partitioning attacks, offering full network visibility to honest nodes even under adversarial conditions—without any bootstrap or directory server.
 
+## 3. Core Design Features
 
-### B. Path Construction
+* **Entry**
+   * **Multi-Entry Splitting**: Each message is split into uniform 2 KB packets and sent over three independent entry mixes simultaneously.
+   * **Merging**: Before entering the first mix node, three 2 KB packets are merged into a 6 KB super-packet (in each entry node, with other messages or noise).
+* **Synchronous Constant-Rate**: Nodes emit exactly 1 6KB super-packet per second per tunnel (to possibly 30-80 tunnels max), replacing dummies with real packets as needed.
+* **Uniform Packet Size & Padding**: Fixed 2 KB packets (6KB super-packet) prevent size-based correlation.
+* **Mesh Mixing & Switching**: At each node, batches of incoming 6 KB super-packets (containing real and dummy 2 KB packets) are pooled, unpacked into 2 KB packets, shuffled, and re-packed into new 6 KB super-packets, which are then sent along random outgoing paths.
+* **Bidirectional, Rotating Tunnels**: No dedicated exit nodes; middle nodes decrypt one layer, mix, then forward—also acting as egress.
+* **Cover Traffic & Loop Backs**: Encrypted dummies and self-addressed loops detect drops and maintain constant flow.
+* **Re-Shufling**: At each node, the pool of 2KB packages (super-packet) is re-shuffled with new packages, creating a new super-packet.
 
-1.  **Fetch & Verify Directory**: Client appliance fetches signed directory snapshots from *multiple* Directory Authorities, cross-validates. Uses DoH/ECH or pluggable transport.
-2.  **Select Guard**: Select/confirm Entry Guard node(s) from the verified list based on stability and policy.
-3.  **Select Random Path**: Construct path of ≥ 5-7 intermediate nodes (Mix/Onion types) after the Guard, considering:
-    * **Location/AS Diversity:** Avoid nodes in same AS/country where possible using directory metadata.
-    * **Node Reputation (Optional/Experimental):** Factor in reputation scores from a decentralized system (use with caution due to manipulation risks).
-    * **Type Mixing:** Ensure path includes sufficient Mix-Relay nodes for timing obfuscation.
-4.  **Acquire Blind Token**: Obtain token from Threshold Token Authorities, potentially including PoW.
-5.  **Circuit Setup**: Authenticate to Guard using blind token. Establish circuit using PQ KEM handshake with each hop. Keys sealed in appliance HSM. Per-hop links use authenticated transport with anti-replay.
+## 4. Network Architecture & Packet Workflow
 
-### C. Traffic Handling
+1. **Segmentation & Padding**: Sender appliance divides the message into chunks of less than 2 KB, encrypts each, and pads until it reached 2 KB.
+2. **Peer Sampling**: Client uses secure decentralized discovery to sample a vetted pool of mix nodes and selects three entry mixes via weighted random selection.
+3. **Packet Injection**: Every second, each tunnel sends exactly one packet—real data if available; otherwise, an encrypted dummy.
+4. **Mixing Mesh**:
+   * **Batch Collection**: A node collects all incoming packets across its tunnels at the 1 s interval.
+   * **Random Delay & Reordering**: Each batch is collectively delayed by a Poisson-distributed offset and then shuffled.
+   * **Switching**: Packets are reassigned to outgoing tunnels at random, breaking per-stream correlations.
+5. **Layered Encryption**: Each packet contains multiple encryption layers, peeled one layer per hop.
+6. **Bidirectional Replies**: Recipient constructs fresh inbound tunnels using the same peer-discovery process; response packets follow the same mixed fashion back.
 
-* **Mixing Strategy**: Primarily rely on **Poisson/Loopix-style mixing** in Mix-Relay nodes to provide resistance against GPA timing analysis. Define standard parameters for delay distributions.
-* **Cover Traffic**:
-    * **Constant Rate:** Appliances send constant-rate traffic (real or cover cells) over circuits.
-    * **Loop Cover Traffic:** Appliances generate and send Sphinx "loop" packets that traverse the mixnet and return, mimicking real traffic patterns.
-    * **Dummy Messages/Polls:** Appliances send occasional dummy messages to plausible (but unused) Rendezvous IDs and perform PIR polls at a constant rate, masking real activity.
-* **Padding:** All cells padded to a uniform size (e.g., 512 B or 1 KiB).
-* **Pluggable Transports**: As before (HTTP/3, QUIC wrappers, etc.), rotated periodically. Use ECH (Encrypted Client Hello) where possible.
+## 5. Performance Evaluation
 
-## 4. Text Messaging Protocol
+| Metric     | Value                                                           |
+| ---------- | --------------------------------------------------------------- |
+| Throughput | ≈0.2-0.5 Mbps effective (6 KB/s cover overhead)                 |
+| Latency    | 2-20 s end-to-end (3-5 hops, 1 s base interval + Poisson delay) |
+| Bandwidth  | ≥6 KB/s per tunnel for cover + real traffic                     |
+| Storage    | Buffer for 1 s batches per node                                 |
 
+## 6. Security & Anonymity Measures
 
-1.  **Message Formatting**
-    * **Double-Layer Encryption:** As before (Outer session, Inner ratchet key).
-    * **AEAD Protection:** Inner layer (AES-GCM) MUST include a **strictly ordered sequence number** within the authenticated additional data (AAD) for each chunk of a single message, preventing reordering/replay *within* a message by the drop server or network.
-    * **Chunking & Padding:** As before (fixed size, padded).
+* **Batch Mixing**: Pools multiple streams, preventing linkability of individual packets.
+* **Switching**: Random reassignment of packets to outgoing tunnels.
+* **Cover Traffic**: Constant emission of dummy packets; loop-back dummies verify integrity.
+* **Layered (Onion/Garlic) Encryption**: Ensures confidentiality and integrity per hop.
+* **Path Rotation**: New tunnels per message direction thwart end-to-end path tracing.
+* **Adaptive Delays**: Poisson-based random delays counter timing analysis.
+* **Threshold Flushing**: Optionally wait for k packets before release to enforce minimum anonymity sets.
+* **Decentralized Discovery**: Peer discovery avoids bootstrap and ensures adversarial resilience.
+* **Reputation System**: Local scoring limits influence of Sybil or malicious nodes.
 
-2.  **Recipient Addressing & Rendezvous**
-    * **Stealth Addresses:** As before. Master public key used for derivation.
-    * **Ephemeral Rendezvous IDs:** Use **single-use** Rendezvous IDs derived from stealth address mechanism + fresh nonce for each message or small batch of chunks. Rendezvous ID = `HMAC(master_pub, one_time_dh_pub, nonce)`.
-    * **PIR Interaction:** Rendezvous IDs are used as keys/tags for storage on Rendezvous Servers. Retrieval *must* use a **PIR scheme** (e.g., SealPIR, Spiral) allowing the client to fetch data for its ID(s) without revealing the ID(s) to the server.
+## 7. Anonymity & Security Assessment
 
-3.  **Delivery Mechanism**
-    * **Dropboxes (PIR Enabled):**
-        1.  Sender encrypts chunk (with sequence # in AAD) → labels with single-use Rendezvous ID → pushes to appropriate Rendezvous Server shard (padding with dummy pushes optional).
-        2.  Recipient appliance periodically polls Rendezvous Server(s) using **PIR** for its calculated set of potential current Rendezvous IDs (includes real IDs and plausible dummy IDs) at a **constant rate**.
-    * **Ack & Retransmit:** Implicit via ratchet state and verified sequence numbers within messages. Missing chunks require higher-level re-request (handled by messaging agent, potentially generating new IDs).
+| Aspect                       | Score (1-10) | Rationale                                                             |
+| ---------------------------- | ------------ | --------------------------------------------------------------------- |
+| Anonymity                    | 9            | Multi-entry, batch mixing, switching, cover traffic.                  |
+| Confidentiality              | 9            | Layered encryption; only endpoints see plaintext.                     |
+| Resistance to GPA            | 8            | Constant-rate, adaptive delays, threshold mixes mitigate timing.      |
+| Resistance to Node Collusion | 9            | Decentralized discovery eliminates bootstrap; strong local filtering. |
+| Operational Complexity       | 4            | High: discovery logic, buffer sync, and p er-hop crypto.               |
 
-4.  **Contact Discovery**
-    * **Primary Method: Out-of-Band Exchange:** Users exchange public identifiers (`pseudonym@anonnetwork_domain`, derived from master public key) via a secure external channel (in-person QR code on appliance screen, PGP email, Signal). This is the recommended secure method.
-    * **Optional/Experimental: Decentralized Intro:** Allow opt-in protocols for introductions via existing contacts, clearly warning about potential metadata linkage.
-    * **NO Centralized Discovery:** Avoid searchable central directories for user identities.
+## 8. Trade-offs & Limitations
 
-5.  **Forward Secrecy & Post-Compromise Recovery**
-    * Asynchronous Ratchet (X3DH + Double Ratchet). Key Erasure.
+* **Latency vs. Anonymity**: Higher mixing intervals and batch sizes increase anonymity but also delay.
+* **Bandwidth vs. Security**: Constant cover traffic ensures uniform flow, at the cost of extra bandwidth.
+* **Scalability**: Large-scale decentralized discovery and validation can tax node resources.
+* **Sybil Resistance**: No central trust anchor; reliant on probabilistic trust and exclusion mechanisms.
 
-## 5. Hardware & Kernel Security
+## 9. Potential Enhancements
 
+* **Verifiable Shuffles**: Cryptographically prove correct mixing without revealing batch contents.
+* **Differential Privacy for Timing**: Calibrate delays to meet formal privacy budgets.
+* **Hardware Acceleration**: Offload encryption and mixing to dedicated hardware.
+* **Secure Peer Exchange Ledger**: Gossip descriptors into multi-ledger systems to increase fault tolerance.
 
-1.  **Separation**
-2.  **Immutable Firmware / Verified Boot** *(Rooted in PUF/HSM)*
-3.  **Remote Attestation**
-    * Appliance uses HSM/Secure Enclave (potentially rooted in PUF) to generate **signed attestations** covering firmware hashes, configuration, and potentially hardware state.
-    * Verifier (other appliances, directory servers) can challenge appliance for fresh attestation before communication or listing. Protocol designed to resist replay.
-4.  **Side-Channel Mitigations**
+## 10. Conclusion
 
-## 6. Operational & Governance Model
-
-
-1.  **Node Hosting**: As before (NGOs, universities etc.), emphasis on diversity. **Node operators may need to stake/bond collateral.**
-2.  **Token Authority**: **Threshold-based** operation mandatory. Run by highly reputable, independent, audited entities.
-3.  **Directory Authority**: Run verifiable logs; operated by independent, audited entities distinct from Token Authorities and node operators where possible.
-4.  **Audits & Bug Bounties**: Crucial, ongoing process for hardware, firmware, protocols, and node software.
-5.  **User Training**: As before, emphasize OPSEC.
-
-## 7. End-to-End Flow Example
-
-
-1.  **Power On**: Appliance boots, verifies microkernel via ROM/PUF, performs self-checks.
-2.  **Connect & Attest**: Connects I/O. Attests its integrity (if challenged by directory/peer). Fetches verified directory info from multiple authorities. Selects/confirms Entry Guard(s).
-3.  **Token Refresh**: Acquires new threshold blind signature token (potentially with PoW).
-4.  **Circuit Setup**: Builds circuit via Guard through mix/onion nodes.
-5.  **Compose**: User writes message on appliance keyboard/screen.
-6.  **Encrypt & Send**: Appliance agent E2E encrypts (ratchet + sequence #), derives *single-use* Rendezvous ID, pushes PIR-encoded chunk(s) to Rendezvous Server via circuit. Sends loop cover traffic.
-7.  **Mix-Onion Delivery**: Cells traverse network with Poisson mixing, delays, constant rate padding.
-8.  **Receive**: Recipient appliance performs constant-rate **PIR polling** for potential Rendezvous IDs. Retrieves chunk(s), verifies sequence #, ratchets keys, decrypts, purges old state, displays plaintext on its own screen. Sends loop cover traffic.
-
-### Why No One Can Spy
-
-* **Network Observer (GPA)**: Sees fixed-size cells flowing at roughly constant rates. **Poisson mixing and loop cover traffic significantly increase the difficulty and cost of traffic correlation.** PIR obscures rendezvous lookups.
-* **Compromised Host Kernel**: Sees only encrypted/authenticated traffic over USB to/from the appliance. No access to keys, plaintext, or internal state.
-* **Malicious Node/Collusion**: Single nodes see little. Collusion effectiveness is reduced by Guard nodes, path selection strategies, potential node staking, and threshold trust for tokens/directory. End-to-end timing correlation remains the hardest challenge but is significantly obscured.
-* **Rendezvous Server**: Cannot determine *which* message IDs are being requested due to **PIR**. Cannot read message content.
+AnonNetwork eliminates central discovery points using a secure, fully decentralized mechanism. With multi-entry mixing, cover traffic, switching, and batch operations, it resists powerful adversaries while offering practical, high-assurance anonymity for secure communication.
